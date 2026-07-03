@@ -208,9 +208,9 @@ def main():
     application.add_handler(CommandHandler("checkhealth", cmd_checkhealth))
     application.add_handler(CommandHandler("jobstatus", cmd_jobstatus))
 
-    # Module handlers registered by each module (Phase 1 onwards).
-    # Pattern: from modules.onboarding.handlers import register_handlers
-    #          register_handlers(application)
+    # Module handlers
+    from modules.onboarding.handlers import register_handlers as register_onboarding
+    register_onboarding(application)
 
     # Fallback for unrecognised input
     application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_unknown))

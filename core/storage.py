@@ -19,15 +19,12 @@ import tarfile
 import tempfile
 from pathlib import Path
 
-from core.config import STORAGE_ROOT
-
-
 class StorageSecurityError(ValueError):
     """Raised when a path escapes the user's designated folder."""
 
 
 def _root() -> Path:
-    return Path(STORAGE_ROOT).resolve()
+    return Path(os.environ.get("STORAGE_ROOT", "/data")).resolve()
 
 
 def _user_root(telegram_id: int) -> Path:
