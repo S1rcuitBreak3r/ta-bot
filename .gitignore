@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+local_data/
+*.db
+*.db-wal
+*.db-shm
+chroma/
+bot_persistence*
+.DS_Store
