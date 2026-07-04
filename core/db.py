@@ -228,6 +228,9 @@ def list_active_users() -> list[dict]:
 
 
 def is_whitelisted(telegram_id: int) -> bool:
+    from core.config import ADMIN_TELEGRAM_ID
+    if telegram_id == ADMIN_TELEGRAM_ID:
+        return True
     with get_conn() as conn:
         row = conn.execute(
             "SELECT 1 FROM users WHERE telegram_id = ? AND status = 'active'", (telegram_id,)
@@ -236,6 +239,9 @@ def is_whitelisted(telegram_id: int) -> bool:
 
 
 def is_admin(telegram_id: int) -> bool:
+    from core.config import ADMIN_TELEGRAM_ID
+    if telegram_id == ADMIN_TELEGRAM_ID:
+        return True
     with get_conn() as conn:
         row = conn.execute(
             "SELECT is_admin FROM users WHERE telegram_id = ? AND status = 'active'", (telegram_id,)
