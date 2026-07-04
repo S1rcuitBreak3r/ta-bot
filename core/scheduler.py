@@ -78,14 +78,11 @@ async def job_birthday_check(bot):
 async def job_expiry_reminder(bot):
     log_id = db.log_scheduler_start("expiry_reminder")
     try:
+        # Use exact-day matching so each reminder fires once per document per threshold.
+        # A doc expiring in 5 days only gets the 7-day message, not all three.
         for days in EXPIRY_THRESHOLDS:
-            docs = db.get_documents_expiring_within(days)
+            docs = db.get_documents_expiring_on_day(days)
             for doc in docs:
-                # Only fire once per threshold — check if we've already reminded at this threshold
-                # by seeing if last_reconfirmed_at was set within the last (days+1) days.
-                # Simple approach: fire if no reconfirmation within 7 days for the 7-day threshold,
-                # within 31 days for 30-day, and within 61 days for 60-day.
-                # The re-confirmation itself updates last_reconfirmed_at, so this prevents repeat spam.
                 expiry = doc["extracted_expiry_date"]
                 doc_type = doc["doc_type"].replace("_", " ").title()
                 try:
@@ -93,13 +90,14 @@ async def job_expiry_reminder(bot):
                         chat_id=doc["telegram_id"],
                         text=(
                             f"⏰ Reminder: Your {doc_type} expires on {expiry} "
-                            f"({days} days away).\n\n"
-                            "Please confirm the date is still correct — reply with "
-                            "/myexpiry to review."
+                            f"({days} days from today).\n\n"
+                            "Please check /myexpiry to review your documents."
                         ),
                     )
                 except Exception as exc:
-                    logger.warning("Could not send expiry reminder to %s: %s", doc["telegram_id"], exc)
+                    logger.warning(
+                        "Could not send expiry reminder to %s: %s", doc["telegram_id"], exc
+                    )
         db.log_scheduler_done(log_id, success=True)
     except Exception as exc:
         db.log_scheduler_done(log_id, success=False, error_detail=str(exc))

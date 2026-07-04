@@ -342,6 +342,22 @@ def get_documents_expiring_within(days: int) -> list[dict]:
         return [dict(r) for r in rows]
 
 
+def get_documents_expiring_on_day(days: int) -> list[dict]:
+    """Documents whose expiry date is exactly `days` days from today (for scheduler)."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT d.*, u.display_name, u.telegram_id as user_telegram_id
+               FROM tracked_documents d
+               JOIN users u ON u.telegram_id = d.telegram_id
+               WHERE d.status = 'active'
+                 AND d.extracted_expiry_date IS NOT NULL
+                 AND date(d.extracted_expiry_date) = date('now', ? || ' days')
+               ORDER BY d.telegram_id""",
+            (f"+{days}",),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
 def get_all_active_documents_summary() -> list[dict]:
     """For admin monthly summary — all users, including those with no docs."""
     with get_conn() as conn:
