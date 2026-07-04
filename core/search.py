@@ -51,6 +51,7 @@ def search(
 
     results = []
     for chroma_id, doc, meta, dist in zip(ids_list, docs, metas, dists):
+        logger.info("search hit: dist=%.3f cutoff=%.3f file=%s", dist, _DISTANCE_CUTOFF, meta.get("filename", "?"))
         if dist > _DISTANCE_CUTOFF:
             continue
         results.append(

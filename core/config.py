@@ -33,7 +33,7 @@ TIMEZONE = "Asia/Singapore"
 
 # Cosine similarity threshold for manual_answers semantic match (0–1).
 # Tune empirically during Phase 2 — do not ship a guessed number.
-SIMILARITY_THRESHOLD = 0.82
+SIMILARITY_THRESHOLD = 0.55
 
 # Chunk size for document ingestion (chars). Glossary always uses 1 row per chunk.
 CHUNK_SIZE = 400

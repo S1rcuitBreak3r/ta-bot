@@ -53,6 +53,7 @@ def query(query_text: str, n_results: int = 3, category: str | None = None) -> d
     Query the collection. Returns chromadb results dict:
     {ids, documents, metadatas, distances} — each a list-of-lists.
     """
+    col = get_collection()
     kwargs: dict = dict(
         query_texts=[query_text],
         n_results=n_results,
@@ -60,7 +61,12 @@ def query(query_text: str, n_results: int = 3, category: str | None = None) -> d
     )
     if category:
         kwargs["where"] = {"category": category}
-    return get_collection().query(**kwargs)
+    try:
+        return col.query(**kwargs)
+    except Exception:
+        # n_results > items in collection (or filtered subset) — retry with 1
+        kwargs["n_results"] = 1
+        return col.query(**kwargs)
 
 
 def delete_by_ids(chroma_ids: list[str]):
