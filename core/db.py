@@ -118,6 +118,26 @@ CREATE TABLE IF NOT EXISTS scheduler_log (
     success BOOLEAN NOT NULL,
     error_detail TEXT
 );
+
+CREATE TABLE IF NOT EXISTS education_sources (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    url TEXT NOT NULL UNIQUE,
+    source_type TEXT DEFAULT 'rss',  -- rss | html
+    active BOOLEAN DEFAULT 1,
+    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS digest_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    digest_text TEXT NOT NULL,
+    sources_used TEXT DEFAULT '[]',  -- JSON list of source names used
+    status TEXT DEFAULT 'draft',     -- draft | approved | discarded
+    sent_to TEXT,                    -- admin_only | all_users
+    recipients_count INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    sent_at TIMESTAMP
+);
 """
 
 _MODULE_DEFAULTS = [
@@ -569,6 +589,95 @@ def list_recent_scheduler_runs(limit: int = 20) -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT * FROM scheduler_log ORDER BY ran_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+# --------------------------------------------------------------------------- #
+# users with birthdays today (for scheduler)
+# --------------------------------------------------------------------------- #
+
+# --------------------------------------------------------------------------- #
+# education_sources
+# --------------------------------------------------------------------------- #
+
+def add_education_source(name: str, url: str, source_type: str = "rss") -> int:
+    with get_conn() as conn:
+        cur = conn.execute(
+            """INSERT INTO education_sources (name, url, source_type)
+               VALUES (?, ?, ?)
+               ON CONFLICT(url) DO UPDATE SET
+                 name = excluded.name,
+                 source_type = excluded.source_type,
+                 active = 1""",
+            (name, url, source_type),
+        )
+        return cur.lastrowid
+
+
+def list_education_sources(active_only: bool = True) -> list[dict]:
+    with get_conn() as conn:
+        if active_only:
+            rows = conn.execute(
+                "SELECT * FROM education_sources WHERE active = 1 ORDER BY name"
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM education_sources ORDER BY active DESC, name"
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def remove_education_source(source_id: int):
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE education_sources SET active = 0 WHERE id = ?", (source_id,)
+        )
+
+
+# --------------------------------------------------------------------------- #
+# digest_history
+# --------------------------------------------------------------------------- #
+
+def save_digest_draft(digest_text: str, sources_used: list[str]) -> int:
+    with get_conn() as conn:
+        cur = conn.execute(
+            """INSERT INTO digest_history (digest_text, sources_used)
+               VALUES (?, ?)""",
+            (digest_text, json.dumps(sources_used)),
+        )
+        return cur.lastrowid
+
+
+def approve_digest(digest_id: int, sent_to: str, recipients_count: int):
+    with get_conn() as conn:
+        conn.execute(
+            """UPDATE digest_history
+               SET status = 'approved', sent_to = ?, recipients_count = ?, sent_at = ?
+               WHERE id = ?""",
+            (sent_to, recipients_count, _now(), digest_id),
+        )
+
+
+def discard_digest(digest_id: int):
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE digest_history SET status = 'discarded' WHERE id = ?", (digest_id,)
+        )
+
+
+def get_digest(digest_id: int) -> dict | None:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM digest_history WHERE id = ?", (digest_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def list_recent_digests(limit: int = 5) -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM digest_history ORDER BY created_at DESC LIMIT ?", (limit,)
         ).fetchall()
         return [dict(r) for r in rows]
 

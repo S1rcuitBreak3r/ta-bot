@@ -104,6 +104,38 @@ async def job_expiry_reminder(bot):
         logger.error("Expiry reminder job failed: %s", exc)
 
 
+async def _run_digest_job(bot, period: str, job_name: str):
+    """Shared body for weekly and monthly digest scheduler jobs."""
+    log_id = db.log_scheduler_start(job_name)
+    try:
+        from core.digest_fetcher import build_digest
+        from modules.education.handlers import _send_preview
+
+        sources = db.list_education_sources(active_only=True)
+        digest_text, source_names, failed_names = await build_digest(sources, period=period)
+        digest_id = db.save_digest_draft(digest_text, source_names)
+
+        await _send_preview(bot, ADMIN_TELEGRAM_ID, digest_id,
+                             digest_text, source_names, failed_names)
+
+        if failed_names:
+            logger.warning("%s: failed sources — %s", job_name, failed_names)
+        db.log_scheduler_done(log_id, success=True)
+        logger.info("%s: digest #%s generated and sent to admin.", job_name, digest_id)
+    except Exception as exc:
+        db.log_scheduler_done(log_id, success=False, error_detail=str(exc))
+        logger.error("%s failed: %s", job_name, exc)
+        await _notify_admin(bot, f"⚠️ {job_name} failed: {exc}")
+
+
+async def job_weekly_digest(bot):
+    await _run_digest_job(bot, period="weekly", job_name="weekly_digest")
+
+
+async def job_monthly_digest(bot):
+    await _run_digest_job(bot, period="monthly", job_name="monthly_digest")
+
+
 async def job_stale_queue_reminder(bot):
     log_id = db.log_scheduler_start("stale_queue_reminder")
     try:
@@ -140,6 +172,15 @@ def build_scheduler(bot) -> AsyncIOScheduler:
     scheduler.add_job(
         job_stale_queue_reminder, CronTrigger(hour=10, minute=0, timezone=TIMEZONE),
         args=[bot], id="stale_queue_reminder", replace_existing=True,
+    )
+    scheduler.add_job(
+        job_weekly_digest, CronTrigger(day_of_week="sat", hour=9, minute=0, timezone=TIMEZONE),
+        args=[bot], id="weekly_digest", replace_existing=True,
+    )
+    scheduler.add_job(
+        job_monthly_digest,
+        CronTrigger(day=1, hour=9, minute=30, timezone=TIMEZONE),
+        args=[bot], id="monthly_digest", replace_existing=True,
     )
 
     return scheduler

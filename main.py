@@ -218,6 +218,9 @@ def main():
     from modules.expiry_tracker.handlers import register_handlers as register_expiry
     register_expiry(application)
 
+    from modules.education.handlers import register_handlers as register_education
+    register_education(application)
+
     # Fallback for unrecognised input
     application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_unknown))
 
