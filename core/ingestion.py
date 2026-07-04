@@ -82,6 +82,38 @@ def chunk_text(text: str) -> list[str]:
     return chunks
 
 
+def chunk_glossary(text: str) -> list[str]:
+    """
+    Parse a Markdown table glossary into one chunk per row.
+    Format: "TERM: meaning\nExample: example"
+    Falls back to chunk_text if no table rows are found.
+    """
+    chunks: list[str] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line.startswith("|"):
+            continue
+        # Skip separator rows like |---|---|---|
+        inner = line.replace("|", "").replace("-", "").replace(" ", "")
+        if not inner:
+            continue
+        parts = [p.strip() for p in line.split("|")]
+        parts = [p for p in parts if p]
+        if len(parts) < 2:
+            continue
+        term = parts[0]
+        # Skip header rows
+        if term.lower() in ("term", "terms"):
+            continue
+        meaning = parts[1] if len(parts) > 1 else ""
+        example = parts[2] if len(parts) > 2 else ""
+        chunk = f"{term}: {meaning}"
+        if example:
+            chunk += f"\nExample: {example}"
+        chunks.append(chunk)
+    return chunks if chunks else chunk_text(text)
+
+
 # --------------------------------------------------------------------------- #
 # Document ingest
 # --------------------------------------------------------------------------- #
@@ -109,7 +141,10 @@ def ingest_document(
 
     rel_path = storage.save_knowledge_file(category, filename, file_bytes)
     text, low_confidence = extract_text(file_bytes, filename)
-    chunks = chunk_text(text)
+    if category == "glossary" or filename.lower().endswith(".md"):
+        chunks = chunk_glossary(text)
+    else:
+        chunks = chunk_text(text)
     if not chunks:
         raise ValueError(f"No extractable text in {filename!r}")
 
