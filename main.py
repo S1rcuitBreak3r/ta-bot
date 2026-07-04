@@ -221,6 +221,9 @@ def main():
     from modules.education.handlers import register_handlers as register_education
     register_education(application)
 
+    from modules.form_filler.handlers import register_handlers as register_form
+    register_form(application)
+
     # Fallback for unrecognised input
     application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_unknown))
 
