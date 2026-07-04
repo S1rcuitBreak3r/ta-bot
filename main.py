@@ -212,6 +212,9 @@ def main():
     from modules.onboarding.handlers import register_handlers as register_onboarding
     register_onboarding(application)
 
+    from modules.knowledge_bank.handlers import register_handlers as register_kb
+    register_kb(application)
+
     # Fallback for unrecognised input
     application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_unknown))
 

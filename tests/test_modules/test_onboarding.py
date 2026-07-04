@@ -19,16 +19,26 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 import core.db as db
 import core.storage as storage
+from core.config import DB_PATH as _ACTUAL_DB_PATH
 
 
 ADMIN_ID = 1234567
 
 
+def _reset_db():
+    """Delete and reinitialise the DB that get_conn() actually uses."""
+    for suffix in ("", "-wal", "-shm"):
+        p = _ACTUAL_DB_PATH + suffix
+        if os.path.exists(p):
+            os.unlink(p)
+    db.init_db()
+    db.seed_defaults()
+    db.add_user(ADMIN_ID, "Dr Admin", "users/1234567", is_admin=True)
+
+
 class TestAddUser(unittest.TestCase):
     def setUp(self):
-        db.init_db()
-        db.seed_defaults()
-        db.add_user(ADMIN_ID, "Dr Admin", "users/1234567", is_admin=True)
+        _reset_db()
 
     def test_add_creates_user_and_folder(self):
         folder_rel = storage.ensure_user_folder(99001)
@@ -67,9 +77,7 @@ class TestAddUser(unittest.TestCase):
 
 class TestRemoveUser(unittest.TestCase):
     def setUp(self):
-        db.init_db()
-        db.seed_defaults()
-        db.add_user(ADMIN_ID, "Dr Admin", "users/1234567", is_admin=True)
+        _reset_db()
 
     def test_archive_revokes_whitelist(self):
         storage.ensure_user_folder(88001)
@@ -121,9 +129,7 @@ class TestWhoami(unittest.TestCase):
 
 class TestModuleFlag(unittest.TestCase):
     def setUp(self):
-        db.init_db()
-        db.seed_defaults()
-        db.add_user(ADMIN_ID, "Dr Admin", "users/1234567", is_admin=True)
+        _reset_db()
 
     def test_onboarding_enabled_by_default(self):
         from core.flags import is_module_enabled
