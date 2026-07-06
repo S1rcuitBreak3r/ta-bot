@@ -56,6 +56,36 @@ class TestExpandQueryTosp(unittest.TestCase):
         self.assertEqual(result, "gcs score")
 
 
+class TestInternationalAcronyms(unittest.TestCase):
+    """Internationally accepted surgical/anaesthesia acronyms expand correctly."""
+
+    CASES = {
+        "TURP": "transurethral resection of prostate",
+        "TURBT": "transurethral resection of bladder",
+        "ERCP": "cholangiopancreatography",
+        "ORIF": "open reduction internal fixation",
+        "CABG": "coronary artery bypass",
+        "PCNL": "percutaneous nephrolithotomy",
+        "EUA": "examination under anaesthesia",
+        "TAH": "total abdominal hysterectomy",
+        "ESWL": "shockwave lithotripsy",
+        "D&C": "dilatation and curettage",
+        "FESS": "functional endoscopic sinus",
+    }
+
+    def test_all_expand_in_tosp_mode(self):
+        for acronym, expected in self.CASES.items():
+            result = expand_query(acronym, tosp=True).lower()
+            self.assertIn(expected, result, f"{acronym} did not expand to include {expected!r}")
+
+    def test_verified_ones_have_keyword_fallback(self):
+        # These have an exact keyword group backing them for lexical fallback
+        for acronym in ("turp", "turbt", "ercp", "orif", "cabg", "pcnl",
+                        "eua", "tah", "eswl", "d&c"):
+            self.assertTrue(tosp_keywords(acronym),
+                            f"{acronym} should have a keyword fallback group")
+
+
 class TestExpandQueryGeneral(unittest.TestCase):
     """General mode appends, preserving original wording."""
 
