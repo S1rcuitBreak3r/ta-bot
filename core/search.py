@@ -68,6 +68,47 @@ def search(
     return results
 
 
+def search_tosp(query_text: str) -> list[dict]:
+    """
+    TOSP fee lookup: acronym expansion + semantic search, topped up with an
+    exact keyword fallback from SQLite when semantic scores fall short
+    (single-word acronym queries embed weakly against long table rows).
+
+    Lexical additions are ranked so entries WITH an anaesthetist fee come
+    first — the team are anaesthetists, that's the number they want.
+    """
+    from core.acronyms import expand_query, tosp_keywords
+
+    expanded = expand_query(query_text, tosp=True)
+    results = search(expanded, category="tosp", n_results=5)
+    seen = {r["chroma_id"] for r in results}
+
+    if len(results) < 3:
+        extras = []
+        for group in tosp_keywords(query_text):
+            for row in db.keyword_search_chunks(group, category="tosp", limit=10):
+                if row["chroma_id"] in seen:
+                    continue
+                seen.add(row["chroma_id"])
+                extras.append(
+                    {
+                        "chroma_id": row["chroma_id"],
+                        "text": row["chunk_text"],
+                        "distance": None,
+                        "source_type": "document",
+                        "category": row["category"],
+                        "filename": row["filename"],
+                        "source_id": "",
+                    }
+                )
+        # Benchmarked anaesthetist fee first, then shortest description
+        # (plain procedures read shorter than complex variants).
+        extras.sort(key=lambda r: ("Anaesthetist fee: $" not in r["text"], len(r["text"])))
+        results.extend(extras[: 5 - len(results)])
+
+    return results
+
+
 def format_answer(result: dict) -> str:
     """Format a search result as a Telegram-ready reply."""
     text = result["text"]

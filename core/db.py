@@ -448,6 +448,32 @@ def insert_chunk(source_id: int, chroma_id: str, chunk_text: str,
         return cur.lastrowid
 
 
+def keyword_search_chunks(
+    keywords: tuple[str, ...], category: str = None, limit: int = 10
+) -> list[dict]:
+    """
+    Case-insensitive substring search over active chunks. All keywords in the
+    tuple must appear in the chunk text. Used as a lexical fallback when
+    semantic search misses short acronym queries.
+    """
+    sql = """SELECT kc.chroma_id, kc.chunk_text, ks.category, ks.filename
+             FROM knowledge_chunks kc
+             JOIN knowledge_sources ks ON kc.source_id = ks.id
+             WHERE kc.status = 'active' AND ks.status = 'active'"""
+    params: list = []
+    for kw in keywords:
+        sql += " AND kc.chunk_text LIKE ? COLLATE NOCASE"
+        params.append(f"%{kw}%")
+    if category:
+        sql += " AND ks.category = ?"
+        params.append(category)
+    sql += " LIMIT ?"
+    params.append(limit)
+    with get_conn() as conn:
+        rows = conn.execute(sql, params).fetchall()
+        return [dict(r) for r in rows]
+
+
 def get_active_chroma_ids() -> set[str]:
     """All chroma_ids for active chunks — used for health-check sync verification."""
     with get_conn() as conn:

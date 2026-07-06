@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 import logging
+import re
 import uuid
 
 import pdfplumber
@@ -82,6 +83,78 @@ def chunk_text(text: str) -> list[str]:
     return chunks
 
 
+_TOSP_CODE = re.compile(r"[A-Z]{0,2}\d{3}[A-Z]")
+
+
+def chunk_tosp_benchmarks(file_bytes: bytes) -> list[str]:
+    """
+    Parse the MOH fee benchmarks PDF into one chunk per TOSP procedure row.
+
+    Handles both table layouts in the publication:
+      11 columns (single-coded TOSPs, has Body Part columns)
+       9 columns (multiple-coded TOSPs)
+    Continuation rows (extra TOSP codes / wrapped descriptions with no fee
+    cells) are merged into the preceding entry.
+
+    Chunk format puts the anaesthetist fee FIRST — the team are
+    anaesthetists, so that is the number they want by default.
+    """
+    entries: list[dict] = []
+
+    with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+        for page in pdf.pages:
+            for table in page.extract_tables():
+                for row in table:
+                    if not row:
+                        continue
+                    n = len(row)
+                    if n == 11:
+                        code, desc, tbl = row[3], row[4], row[5]
+                        s_lo, s_hi, a_lo, a_hi, notes = row[6], row[7], row[8], row[9], row[10]
+                    elif n == 9:
+                        code, desc, tbl = row[1], row[2], row[3]
+                        s_lo, s_hi, a_lo, a_hi, notes = row[4], row[5], row[6], row[7], row[8]
+                    else:
+                        continue
+
+                    code = (code or "").strip()
+                    desc = " ".join((desc or "").split())
+
+                    has_fees = bool((s_lo or "").strip() or (a_lo or "").strip())
+                    is_code = bool(_TOSP_CODE.search(code))
+
+                    if is_code and has_fees:
+                        entries.append({
+                            "codes": [code], "desc": desc, "tbl": (tbl or "").strip(),
+                            "s_lo": s_lo, "s_hi": s_hi, "a_lo": a_lo, "a_hi": a_hi,
+                            "notes": " ".join((notes or "").split()),
+                        })
+                    elif entries and (is_code or desc) and not has_fees:
+                        # Continuation of the previous entry
+                        if is_code:
+                            entries[-1]["codes"].append(code)
+                        if desc:
+                            entries[-1]["desc"] += " " + desc
+
+    def fee(lo, hi) -> str:
+        lo, hi = (lo or "").strip(), (hi or "").strip()
+        if not lo or lo.lower().startswith("not"):
+            return "not benchmarked"
+        return f"${lo} to ${hi}"
+
+    chunks = []
+    for e in entries:
+        lines = [
+            f"{e['desc']} (TOSP {' + '.join(e['codes'])}, Table {e['tbl']})",
+            f"Anaesthetist fee: {fee(e['a_lo'], e['a_hi'])}",
+            f"Surgeon fee: {fee(e['s_lo'], e['s_hi'])}",
+        ]
+        if e["notes"]:
+            lines.append(f"Note: {e['notes']}")
+        chunks.append("\n".join(lines))
+    return chunks
+
+
 def chunk_glossary(text: str) -> list[str]:
     """
     Parse a Markdown table glossary into one chunk per row.
@@ -140,11 +213,21 @@ def ingest_document(
             logger.error("Failed to delete old ChromaDB chunks (source %s): %s", existing["id"], exc)
 
     rel_path = storage.save_knowledge_file(category, filename, file_bytes)
-    text, low_confidence = extract_text(file_bytes, filename)
-    if category == "glossary" or filename.lower().endswith(".md"):
-        chunks = chunk_glossary(text)
-    else:
-        chunks = chunk_text(text)
+    low_confidence = False
+    chunks: list[str] = []
+
+    if category == "tosp" and filename.lower().endswith(".pdf"):
+        try:
+            chunks = chunk_tosp_benchmarks(file_bytes)
+        except Exception as exc:
+            logger.warning("TOSP table parse failed for %s, falling back: %s", filename, exc)
+
+    if not chunks:
+        text, low_confidence = extract_text(file_bytes, filename)
+        if category == "glossary" or filename.lower().endswith(".md"):
+            chunks = chunk_glossary(text)
+        else:
+            chunks = chunk_text(text)
     if not chunks:
         raise ValueError(f"No extractable text in {filename!r}")
 

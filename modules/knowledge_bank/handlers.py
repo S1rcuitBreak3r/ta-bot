@@ -33,6 +33,7 @@ import core.db as db
 import core.flags as flags
 import core.ingestion as ingestion
 import core.search as search
+from core.acronyms import expand_query
 from core.config import ADMIN_TELEGRAM_ID, CONVERSATION_TIMEOUT_SECONDS
 
 logger = logging.getLogger(__name__)
@@ -289,11 +290,17 @@ async def _handle_search(
 
     uid = update.effective_user.id
     t0 = time.monotonic()
-    results = search.search(query_text, category=category)
+    if source_command == "tosp":
+        results = search.search_tosp(query_text)
+    else:
+        results = search.search(expand_query(query_text), category=category)
     elapsed_ms = int((time.monotonic() - t0) * 1000)
 
     if results:
-        answer = search.format_answer(results[0])
+        # TOSP queries can legitimately match several procedures (e.g.
+        # circumcision has separate child/adult entries) — show up to 3.
+        shown = results[:3] if source_command == "tosp" else results[:1]
+        answer = "\n\n———\n\n".join(search.format_answer(r) for r in shown)
         db.log_action(
             uid, source_command, detail=query_text[:200],
             module_name=MODULE, outcome="answered", response_ms=elapsed_ms,
